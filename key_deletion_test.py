@@ -7,7 +7,7 @@ import requests
 import json
 
 # Backend URL from frontend/.env
-BACKEND_URL = "https://820bf613-2663-46eb-a912-c50c96e2b067.preview.emergentagent.com/api"
+BACKEND_URL = "https://880a56f3-4b8d-4fb1-b1c2-796b06eee3c3.preview.emergentagent.com/api"
 ADMIN_PASSWORD = "xenforce123"
 
 def test_key_deletion_scenario():
