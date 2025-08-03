@@ -830,6 +830,9 @@ class BackendTester:
         self.test_key_redemption_valid()
         self.test_key_redemption_invalid()
         self.test_key_redemption_no_accounts()
+        
+        # Test automatic key deletion feature
+        self.test_automatic_key_deletion_after_redemption()
 
         # Cleanup
         self.cleanup()
