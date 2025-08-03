@@ -147,9 +147,12 @@ async def redeem_key(redeem_data: KeyRedeem):
     # Select random account
     random_account = random.choice(accounts)
     
+    # Delete the used key (one-time use)
+    await db.delivery_keys.delete_one({"key_value": redeem_data.key})
+    
     return AccountDeliveryResponse(
         success=True,
-        message="Steam hesabınız başarıyla teslim edildi!",
+        message="Steam hesabınız başarıyla teslim edildi! Key kullanıldı.",
         account={
             "username": random_account["username"],
             "password": random_account["password"]
