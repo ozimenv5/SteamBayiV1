@@ -542,6 +542,244 @@ class BackendTester:
                     {"error": str(e)}
                 )
 
+    def test_automatic_key_deletion_after_redemption(self):
+        """Test that keys are automatically deleted after successful redemption"""
+        if not self.admin_token:
+            self.log_test(
+                "Automatic Key Deletion",
+                False,
+                "No admin token available for authentication",
+                {}
+            )
+            return
+
+        headers = {
+            "Authorization": f"Bearer {self.admin_token}",
+            "Content-Type": "application/json"
+        }
+
+        # Step 1: Ensure we have at least one account for redemption
+        if not self.created_accounts:
+            # Create a test account
+            test_account = {"username": "testuser_autodeletion", "password": "testpass123"}
+            try:
+                response = requests.post(
+                    f"{BACKEND_URL}/admin/accounts",
+                    json=test_account,
+                    headers=headers
+                )
+                if response.status_code == 200:
+                    account = response.json()
+                    self.created_accounts.append(account)
+                else:
+                    self.log_test(
+                        "Automatic Key Deletion - Setup Account",
+                        False,
+                        f"Failed to create test account: HTTP {response.status_code}",
+                        {"status_code": response.status_code}
+                    )
+                    return
+            except Exception as e:
+                self.log_test(
+                    "Automatic Key Deletion - Setup Account",
+                    False,
+                    f"Failed to create test account: {str(e)}",
+                    {"error": str(e)}
+                )
+                return
+
+        # Step 2: Create a specific test key for this scenario
+        test_key_value = "AUTO-DELETE-TEST-KEY-2025"
+        test_key_data = {"key_value": test_key_value}
+        
+        try:
+            response = requests.post(
+                f"{BACKEND_URL}/admin/keys",
+                json=test_key_data,
+                headers=headers
+            )
+            
+            if response.status_code != 200:
+                self.log_test(
+                    "Automatic Key Deletion - Setup Key",
+                    False,
+                    f"Failed to create test key: HTTP {response.status_code}",
+                    {"status_code": response.status_code}
+                )
+                return
+                
+            created_key = response.json()
+            key_id = created_key.get("id")
+            
+        except Exception as e:
+            self.log_test(
+                "Automatic Key Deletion - Setup Key",
+                False,
+                f"Failed to create test key: {str(e)}",
+                {"error": str(e)}
+            )
+            return
+
+        # Step 3: Verify key exists in the list before redemption
+        try:
+            response = requests.get(f"{BACKEND_URL}/admin/keys", headers=headers)
+            if response.status_code == 200:
+                keys_before = response.json()
+                key_exists_before = any(key.get("key_value") == test_key_value for key in keys_before)
+                
+                if not key_exists_before:
+                    self.log_test(
+                        "Automatic Key Deletion - Key Exists Before",
+                        False,
+                        "Test key not found in key list before redemption",
+                        {"keys_count": len(keys_before)}
+                    )
+                    return
+                else:
+                    self.log_test(
+                        "Automatic Key Deletion - Key Exists Before",
+                        True,
+                        f"Test key confirmed in list before redemption ({len(keys_before)} total keys)",
+                        {"keys_count": len(keys_before), "test_key": test_key_value}
+                    )
+            else:
+                self.log_test(
+                    "Automatic Key Deletion - Key Exists Before",
+                    False,
+                    f"Failed to get key list: HTTP {response.status_code}",
+                    {"status_code": response.status_code}
+                )
+                return
+        except Exception as e:
+            self.log_test(
+                "Automatic Key Deletion - Key Exists Before",
+                False,
+                f"Failed to get key list: {str(e)}",
+                {"error": str(e)}
+            )
+            return
+
+        # Step 4: Redeem the key (should succeed and delete the key)
+        try:
+            response = requests.post(
+                f"{BACKEND_URL}/redeem-key",
+                json={"key": test_key_value},
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success") and data.get("account"):
+                    self.log_test(
+                        "Automatic Key Deletion - First Redemption",
+                        True,
+                        "Key successfully redeemed and account delivered",
+                        {
+                            "key_used": test_key_value,
+                            "account_username": data["account"]["username"],
+                            "message": data.get("message")
+                        }
+                    )
+                else:
+                    self.log_test(
+                        "Automatic Key Deletion - First Redemption",
+                        False,
+                        "Key redemption failed or no account returned",
+                        {"response": data}
+                    )
+                    return
+            else:
+                self.log_test(
+                    "Automatic Key Deletion - First Redemption",
+                    False,
+                    f"Key redemption failed: HTTP {response.status_code}",
+                    {"status_code": response.status_code, "response": response.text}
+                )
+                return
+        except Exception as e:
+            self.log_test(
+                "Automatic Key Deletion - First Redemption",
+                False,
+                f"Key redemption request failed: {str(e)}",
+                {"error": str(e)}
+            )
+            return
+
+        # Step 5: Try to use the same key again (should fail)
+        try:
+            response = requests.post(
+                f"{BACKEND_URL}/redeem-key",
+                json={"key": test_key_value},
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if not data.get("success") and "Geçersiz key" in data.get("message", ""):
+                    self.log_test(
+                        "Automatic Key Deletion - Second Redemption Attempt",
+                        True,
+                        "Used key correctly rejected on second attempt",
+                        {"message": data.get("message")}
+                    )
+                else:
+                    self.log_test(
+                        "Automatic Key Deletion - Second Redemption Attempt",
+                        False,
+                        "Used key should have been rejected but wasn't",
+                        {"response": data}
+                    )
+            else:
+                self.log_test(
+                    "Automatic Key Deletion - Second Redemption Attempt",
+                    False,
+                    f"Unexpected HTTP status: {response.status_code}",
+                    {"status_code": response.status_code, "response": response.text}
+                )
+        except Exception as e:
+            self.log_test(
+                "Automatic Key Deletion - Second Redemption Attempt",
+                False,
+                f"Second redemption request failed: {str(e)}",
+                {"error": str(e)}
+            )
+
+        # Step 6: Verify key is deleted from the list
+        try:
+            response = requests.get(f"{BACKEND_URL}/admin/keys", headers=headers)
+            if response.status_code == 200:
+                keys_after = response.json()
+                key_exists_after = any(key.get("key_value") == test_key_value for key in keys_after)
+                
+                if not key_exists_after:
+                    self.log_test(
+                        "Automatic Key Deletion - Key Deleted After",
+                        True,
+                        f"Test key successfully deleted from list after redemption ({len(keys_after)} total keys remaining)",
+                        {"keys_count_after": len(keys_after), "test_key": test_key_value}
+                    )
+                else:
+                    self.log_test(
+                        "Automatic Key Deletion - Key Deleted After",
+                        False,
+                        "Test key still exists in list after redemption - automatic deletion failed",
+                        {"keys_count_after": len(keys_after), "test_key": test_key_value}
+                    )
+            else:
+                self.log_test(
+                    "Automatic Key Deletion - Key Deleted After",
+                    False,
+                    f"Failed to get key list after redemption: HTTP {response.status_code}",
+                    {"status_code": response.status_code}
+                )
+        except Exception as e:
+            self.log_test(
+                "Automatic Key Deletion - Key Deleted After",
+                False,
+                f"Failed to get key list after redemption: {str(e)}",
+                {"error": str(e)}
+            )
+
     def cleanup(self):
         """Clean up test data"""
         if not self.admin_token:
